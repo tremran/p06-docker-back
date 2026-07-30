@@ -3,6 +3,7 @@ name: ci
 on:
   push:
     branches:
+      - main
       - develop
       - ci-tests
 
@@ -41,9 +42,35 @@ jobs:
           name: code-coverage-report
           path: ${{ env.CI_TEST_FOLDER }}
 
-  build:
+  release:
     runs-on: ubuntu-latest
     needs: run-tests
+    if: ${{ github.ref == 'refs/heads/main' }}
+    permissions:
+      contents: write  # Nécessaire pour créer une release et un tag
+      issues: write
+      pull-requests: write
+    outputs:
+      new_version: ${{ steps.semantic_release.outputs.new_release_version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Semantic Release
+        id: semantic_release
+        uses: cycjimmy/semantic-release-action@v6
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  push:
+    runs-on: ubuntu-latest
+    needs: release
+    if: ${{ github.ref == 'refs/heads/main' }}
     permissions:
       contents: read
       packages: write
@@ -64,6 +91,7 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=raw,value=latest
+            type=raw,value=${{ needs.release.outputs.new_version }}
             type=sha
 
       - name: Build and push Docker image
